@@ -1,0 +1,170 @@
+services:
+  resolver:
+    image: ghcr.io/mailu/unbound:${MAILU_VERSION:-2024.06}
+    restart: always
+    env_file: .env
+    logging:
+      driver: journald
+      options:
+        tag: mailu-resolver
+    networks:
+      default:
+        ipv4_address: ${RESOLVER_IP:-192.168.203.254}
+
+  redis:
+    image: redis:7-alpine
+    restart: always
+    volumes:
+      - ${MAILU_DATA_ROOT:-./data}/redis:/data
+    depends_on:
+      - resolver
+    dns:
+      - ${RESOLVER_IP:-192.168.203.254}
+
+  front:
+    image: ghcr.io/mailu/nginx:${MAILU_VERSION:-2024.06}
+    restart: always
+    env_file: .env
+    logging:
+      driver: journald
+      options:
+        tag: mailu-front
+    ports:
+      # Web UI: localhost only. The host reverse proxy owns public 80/443.
+      - "127.0.0.1:${MAILU_HTTP_PORT:-8081}:80"
+      - "127.0.0.1:${MAILU_HTTPS_PORT:-8443}:443"
+      # Public mail protocols.
+      - "${BIND_ADDRESS4:-0.0.0.0}:25:25"
+      - "${BIND_ADDRESS4:-0.0.0.0}:465:465"
+      - "${BIND_ADDRESS4:-0.0.0.0}:587:587"
+      - "${BIND_ADDRESS4:-0.0.0.0}:993:993"
+      - "${BIND_ADDRESS4:-0.0.0.0}:4190:4190"
+    networks:
+      - default
+      - webmail
+    volumes:
+      - ${MAILU_DATA_ROOT:-./data}/certs:/certs:ro
+      - ${MAILU_DATA_ROOT:-./data}/overrides/nginx:/overrides:ro
+    depends_on:
+      - resolver
+    dns:
+      - ${RESOLVER_IP:-192.168.203.254}
+
+  admin:
+    image: ghcr.io/mailu/admin:${MAILU_VERSION:-2024.06}
+    restart: always
+    env_file: .env
+    logging:
+      driver: journald
+      options:
+        tag: mailu-admin
+    volumes:
+      - ${MAILU_DATA_ROOT:-./data}/admin:/data
+      - ${MAILU_DATA_ROOT:-./data}/dkim:/dkim
+    depends_on:
+      - redis
+      - resolver
+    dns:
+      - ${RESOLVER_IP:-192.168.203.254}
+
+  imap:
+    image: ghcr.io/mailu/dovecot:${MAILU_VERSION:-2024.06}
+    restart: always
+    env_file: .env
+    logging:
+      driver: journald
+      options:
+        tag: mailu-imap
+    volumes:
+      - ${MAILU_DATA_ROOT:-./data}/mail:/mail
+      - ${MAILU_DATA_ROOT:-./data}/overrides/dovecot:/overrides:ro
+    depends_on:
+      - front
+      - resolver
+    dns:
+      - ${RESOLVER_IP:-192.168.203.254}
+
+  smtp:
+    image: ghcr.io/mailu/postfix:${MAILU_VERSION:-2024.06}
+    restart: always
+    env_file: .env
+    logging:
+      driver: journald
+      options:
+        tag: mailu-smtp
+    volumes:
+      - ${MAILU_DATA_ROOT:-./data}/mailqueue:/queue
+      - ${MAILU_DATA_ROOT:-./data}/overrides/postfix:/overrides:ro
+    depends_on:
+      - front
+      - resolver
+    dns:
+      - ${RESOLVER_IP:-192.168.203.254}
+
+  oletools:
+    image: ghcr.io/mailu/oletools:${MAILU_VERSION:-2024.06}
+    hostname: oletools
+    restart: always
+    logging:
+      driver: journald
+      options:
+        tag: mailu-oletools
+    networks:
+      - oletools
+    depends_on:
+      - resolver
+    dns:
+      - ${RESOLVER_IP:-192.168.203.254}
+
+  antispam:
+    image: ghcr.io/mailu/rspamd:${MAILU_VERSION:-2024.06}
+    hostname: antispam
+    restart: always
+    env_file: .env
+    logging:
+      driver: journald
+      options:
+        tag: mailu-antispam
+    networks:
+      - default
+      - oletools
+    volumes:
+      - ${MAILU_DATA_ROOT:-./data}/filter:/var/lib/rspamd
+      - ${MAILU_DATA_ROOT:-./data}/overrides/rspamd:/overrides:ro
+    depends_on:
+      - front
+      - redis
+      - oletools
+      - resolver
+    dns:
+      - ${RESOLVER_IP:-192.168.203.254}
+
+  webmail:
+    image: ghcr.io/mailu/webmail:${MAILU_VERSION:-2024.06}
+    restart: always
+    env_file: .env
+    logging:
+      driver: journald
+      options:
+        tag: mailu-webmail
+    volumes:
+      - ${MAILU_DATA_ROOT:-./data}/webmail:/data
+      - ${MAILU_DATA_ROOT:-./data}/overrides/roundcube:/overrides:ro
+    networks:
+      - webmail
+    depends_on:
+      - front
+
+networks:
+  default:
+    name: ${MAILU_NETWORK_NAME:-pktmail_default}
+    driver: bridge
+    ipam:
+      driver: default
+      config:
+        - subnet: ${SUBNET:-192.168.203.0/24}
+  webmail:
+    driver: bridge
+  oletools:
+    driver: bridge
+    internal: true
