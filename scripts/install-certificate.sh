@@ -1,18 +1,17 @@
 #!/bin/sh
 set -eu
-
-: "${MAIL_HOSTNAME:?Set MAIL_HOSTNAME, e.g. mail.example.com}"
-MAILU_DIRECTORY="${MAILU_DIRECTORY:-/opt/pktmail}"
-CERTBOT_DIRECTORY="${CERTBOT_DIRECTORY:-/etc/letsencrypt}"
-
-install -d -m 0750 "${MAILU_DIRECTORY}/data/certs"
-install -m 0644 "${CERTBOT_DIRECTORY}/live/${MAIL_HOSTNAME}/fullchain.pem" \
-  "${MAILU_DIRECTORY}/data/certs/cert.pem"
-install -m 0640 "${CERTBOT_DIRECTORY}/live/${MAIL_HOSTNAME}/privkey.pem" \
-  "${MAILU_DIRECTORY}/data/certs/key.pem"
-
-cd "$MAILU_DIRECTORY"
-if docker compose ps --status running -q front | grep -q .; then
-  docker compose exec -T front nginx -s reload
-  docker compose exec -T front doveadm reload
-fi
+MAIL_HOSTNAME="${MAIL_HOSTNAME:-mail.pktm.fr}"
+MAILU_DATA_ROOT="${MAILU_DATA_ROOT:-/opt/pktmail/data}"
+LINEAGE="/etc/letsencrypt/live/$MAIL_HOSTNAME"
+if [ -n "${RENEWED_LINEAGE:-}" ] && [ "$RENEWED_LINEAGE" != "$LINEAGE" ]; then exit 0; fi
+openssl x509 -in "$LINEAGE/fullchain.pem" -noout -checkhost "$MAIL_HOSTNAME" >/dev/null
+install -d -m 0750 "$MAILU_DATA_ROOT/certs"
+install -m 0644 "$LINEAGE/fullchain.pem" "$MAILU_DATA_ROOT/certs/cert.pem"
+install -m 0600 "$LINEAGE/privkey.pem" "$MAILU_DATA_ROOT/certs/key.pem"
+for container in $(docker ps -q --filter label=com.docker.compose.project=pktmail --filter label=com.docker.compose.service=front); do
+  docker exec "$container" nginx -t
+  docker exec "$container" nginx -s reload
+  docker exec "$container" doveadm reload
+done
+nginx -t
+systemctl reload nginx

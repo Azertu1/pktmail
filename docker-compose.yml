@@ -2,7 +2,9 @@ services:
   resolver:
     image: ghcr.io/mailu/unbound:${MAILU_VERSION:-2024.06}
     restart: always
-    env_file: .env
+    env_file:
+      - mailu.env
+      - ${MAILU_SECRETS_FILE:-/data/pktmail/secrets.env}
     logging:
       driver: journald
       options:
@@ -15,7 +17,7 @@ services:
     image: redis:7-alpine
     restart: always
     volumes:
-      - ${MAILU_DATA_ROOT:-./data}/redis:/data
+      - ${MAILU_DATA_ROOT:-/opt/pktmail/data}/redis:/data
     depends_on:
       - resolver
     dns:
@@ -23,8 +25,14 @@ services:
 
   front:
     image: ghcr.io/mailu/nginx:${MAILU_VERSION:-2024.06}
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
     restart: always
-    env_file: .env
+    env_file:
+      - mailu.env
+      - ${MAILU_SECRETS_FILE:-/data/pktmail/secrets.env}
     logging:
       driver: journald
       options:
@@ -43,8 +51,8 @@ services:
       - default
       - webmail
     volumes:
-      - ${MAILU_DATA_ROOT:-./data}/certs:/certs:ro
-      - ${MAILU_DATA_ROOT:-./data}/overrides/nginx:/overrides:ro
+      - ${MAILU_DATA_ROOT:-/opt/pktmail/data}/certs:/certs:ro
+      - ${MAILU_DATA_ROOT:-/opt/pktmail/data}/overrides/nginx:/overrides:ro
     depends_on:
       - resolver
     dns:
@@ -53,14 +61,16 @@ services:
   admin:
     image: ghcr.io/mailu/admin:${MAILU_VERSION:-2024.06}
     restart: always
-    env_file: .env
+    env_file:
+      - mailu.env
+      - ${MAILU_SECRETS_FILE:-/data/pktmail/secrets.env}
     logging:
       driver: journald
       options:
         tag: mailu-admin
     volumes:
-      - ${MAILU_DATA_ROOT:-./data}/admin:/data
-      - ${MAILU_DATA_ROOT:-./data}/dkim:/dkim
+      - ${MAILU_DATA_ROOT:-/opt/pktmail/data}/admin:/data
+      - ${MAILU_DATA_ROOT:-/opt/pktmail/data}/dkim:/dkim
     depends_on:
       - redis
       - resolver
@@ -69,15 +79,21 @@ services:
 
   imap:
     image: ghcr.io/mailu/dovecot:${MAILU_VERSION:-2024.06}
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
     restart: always
-    env_file: .env
+    env_file:
+      - mailu.env
+      - ${MAILU_SECRETS_FILE:-/data/pktmail/secrets.env}
     logging:
       driver: journald
       options:
         tag: mailu-imap
     volumes:
-      - ${MAILU_DATA_ROOT:-./data}/mail:/mail
-      - ${MAILU_DATA_ROOT:-./data}/overrides/dovecot:/overrides:ro
+      - ${MAILU_DATA_ROOT:-/opt/pktmail/data}/mail:/mail
+      - ${MAILU_DATA_ROOT:-/opt/pktmail/data}/overrides/dovecot:/overrides:ro
     depends_on:
       - front
       - resolver
@@ -87,14 +103,16 @@ services:
   smtp:
     image: ghcr.io/mailu/postfix:${MAILU_VERSION:-2024.06}
     restart: always
-    env_file: .env
+    env_file:
+      - mailu.env
+      - ${MAILU_SECRETS_FILE:-/data/pktmail/secrets.env}
     logging:
       driver: journald
       options:
         tag: mailu-smtp
     volumes:
-      - ${MAILU_DATA_ROOT:-./data}/mailqueue:/queue
-      - ${MAILU_DATA_ROOT:-./data}/overrides/postfix:/overrides:ro
+      - ${MAILU_DATA_ROOT:-/opt/pktmail/data}/mailqueue:/queue
+      - ${MAILU_DATA_ROOT:-/opt/pktmail/data}/overrides/postfix:/overrides:ro
     depends_on:
       - front
       - resolver
@@ -120,7 +138,9 @@ services:
     image: ghcr.io/mailu/rspamd:${MAILU_VERSION:-2024.06}
     hostname: antispam
     restart: always
-    env_file: .env
+    env_file:
+      - mailu.env
+      - ${MAILU_SECRETS_FILE:-/data/pktmail/secrets.env}
     logging:
       driver: journald
       options:
@@ -129,8 +149,8 @@ services:
       - default
       - oletools
     volumes:
-      - ${MAILU_DATA_ROOT:-./data}/filter:/var/lib/rspamd
-      - ${MAILU_DATA_ROOT:-./data}/overrides/rspamd:/overrides:ro
+      - ${MAILU_DATA_ROOT:-/opt/pktmail/data}/filter:/var/lib/rspamd
+      - ${MAILU_DATA_ROOT:-/opt/pktmail/data}/overrides/rspamd:/overrides:ro
     depends_on:
       - front
       - redis
@@ -142,14 +162,16 @@ services:
   webmail:
     image: ghcr.io/mailu/webmail:${MAILU_VERSION:-2024.06}
     restart: always
-    env_file: .env
+    env_file:
+      - mailu.env
+      - ${MAILU_SECRETS_FILE:-/data/pktmail/secrets.env}
     logging:
       driver: journald
       options:
         tag: mailu-webmail
     volumes:
-      - ${MAILU_DATA_ROOT:-./data}/webmail:/data
-      - ${MAILU_DATA_ROOT:-./data}/overrides/roundcube:/overrides:ro
+      - ${MAILU_DATA_ROOT:-/opt/pktmail/data}/webmail:/data
+      - ${MAILU_DATA_ROOT:-/opt/pktmail/data}/overrides/roundcube:/overrides:ro
     networks:
       - webmail
     depends_on:
