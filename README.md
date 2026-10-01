@@ -25,7 +25,7 @@ Sur le VPS :
 ```bash
 git clone <URL_DU_DEPOT_PKTMAIL> /opt/pktmail
 cd /opt/pktmail
-cp .env.example .env
+cp .env .env
 openssl rand -hex 16   # SECRET_KEY
 openssl rand -hex 32   # API_TOKEN
 chmod 600 .env
